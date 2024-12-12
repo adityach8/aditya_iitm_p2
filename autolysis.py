@@ -1,313 +1,175 @@
-# /// script
-# requires-python = ">=3.9"
-# dependencies = [
-#   "pandas",
-#   "seaborn",
-#   "matplotlib",
-#   "numpy",
-#   "scipy",
-#   "openai",
-#   "scikit-learn",
-#   "requests",
-#   "ipykernel",  # Added ipykernel
-# ]
-# ///
-
 import os
+import sys
 import pandas as pd
-import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import argparse
 import requests
-import json
-import openai  # Make sure you install this library: pip install openai
+import numpy as np
+from dateutil.parser import parse
+import openai
+from fastapi import FastAPI
+from pydantic import BaseModel
 
-# Function to analyze the data (basic summary stats, missing values, correlation matrix)
-def analyze_data(df):
-    print("Analyzing the data...")  # Debugging line
-    # Summary statistics for numerical columns
-    summary_stats = df.describe()
+# Initialize FastAPI app
+app = FastAPI()
 
-    # Check for missing values
-    missing_values = df.isnull().sum()
+# Set OpenAI API Key from Environment
+openai.api_key = os.getenv("AIPROXY_TOKEN")
+if not openai.api_key:
+    raise ValueError("Environment variable 'AIPROXY_TOKEN' is not set.")
 
-    # Select only numeric columns for correlation matrix
-    numeric_df = df.select_dtypes(include=[np.number])
+# API Endpoint Configuration
+OPENAI_API_URL = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+HEADERS = {
+    "Authorization": f"Bearer {openai.api_key}",
+    "Content-Type": "application/json"
+}
 
-    # Correlation matrix for numerical columns
-    corr_matrix = numeric_df.corr() if not numeric_df.empty else pd.DataFrame()
-
-    print("Data analysis complete.")  # Debugging line
-    return summary_stats, missing_values, corr_matrix
-
-
-# Function to detect outliers using the IQR method
-def detect_outliers(df):
-    print("Detecting outliers...")  # Debugging line
-    # Select only numeric columns
-    df_numeric = df.select_dtypes(include=[np.number])
-
-    # Apply the IQR method to find outliers in the numeric columns
-    Q1 = df_numeric.quantile(0.25)
-    Q3 = df_numeric.quantile(0.75)
-    IQR = Q3 - Q1
-    outliers = ((df_numeric < (Q1 - 1.5 * IQR)) | (df_numeric > (Q3 + 1.5 * IQR))).sum()
-
-    print("Outliers detection complete.")  # Debugging line
-    return outliers
+class DatasetRequest(BaseModel):
+    file_path: str
 
 
-# Function to generate visualizations (correlation heatmap, outliers plot, and distribution plot)
-def visualize_data(corr_matrix, outliers, df, output_dir):
-    print("Generating visualizations...")  # Debugging line
-    # Generate a heatmap for the correlation matrix
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
-    plt.title('Correlation Matrix')
-    heatmap_file = os.path.join(output_dir, 'correlation_matrix.png')
-    plt.savefig(heatmap_file)
-    plt.close()
-
-    # Check if there are outliers to plot
-    if not outliers.empty and outliers.sum() > 0:
-        # Plot the outliers
-        plt.figure(figsize=(10, 6))
-        outliers.plot(kind='bar', color='red')
-        plt.title('Outliers Detection')
-        plt.xlabel('Columns')
-        plt.ylabel('Number of Outliers')
-        outliers_file = os.path.join(output_dir, 'outliers.png')
-        plt.savefig(outliers_file)
-        plt.close()
-    else:
-        print("No outliers detected to visualize.")
-        outliers_file = None  # No file created for outliers
-
-    # Generate a distribution plot for the first numeric column
-    numeric_columns = df.select_dtypes(include=[np.number]).columns
-    if len(numeric_columns) > 0:
-        first_numeric_column = numeric_columns[0]  # Get the first numeric column
-        plt.figure(figsize=(10, 6))
-        sns.histplot(df[first_numeric_column], kde=True, color='blue', bins=30)
-        plt.title(f'Distribution')
-        dist_plot_file = os.path.join(output_dir, f'distribution_.png')
-        plt.savefig(dist_plot_file)
-        plt.close()
-    else:
-        dist_plot_file = None  # No numeric columns to plot
-
-    print("Visualizations generated.")  # Debugging line
-    return heatmap_file, outliers_file, dist_plot_file
-
-
-# Function to create the README.md with a narrative and visualizations
-# Function to create the README.md with a narrative and visualizations
-# Function to create the README.md with a narrative and visualizations
-def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir):
-    print("Creating README file...")  # Debugging line
-    # Write the analysis report to a markdown file
-    readme_file = os.path.join(output_dir, 'README.md')
+@app.post("/analyze")
+def analyze_dataset_api(request: DatasetRequest):
+    """
+    API Endpoint to analyze the dataset and generate a report.
+    """
     try:
-        with open(readme_file, 'w') as f:
-            f.write("# Automated Data Analysis Report\n\n")
-
-            # Introduction Section
-            f.write("## Introduction\n")
-            f.write("This is an automated analysis of the dataset, providing summary statistics, visualizations, and insights from the data.\n\n")
-
-            # Summary Statistics Section
-            f.write("## Summary Statistics\n")
-            f.write("The summary statistics of the dataset are as follows:\n")
-            f.write("\n| Statistic    | Value |\n")
-            f.write("|--------------|-------|\n")
-
-            # Write summary statistics for each column (mean, std, min, etc.)
-            for column in summary_stats.columns:
-                f.write(f"| {column} - Mean | {summary_stats.loc['mean', column]:.2f} |\n")
-                f.write(f"| {column} - Std Dev | {summary_stats.loc['std', column]:.2f} |\n")
-                f.write(f"| {column} - Min | {summary_stats.loc['min', column]:.2f} |\n")
-                f.write(f"| {column} - 25th Percentile | {summary_stats.loc['25%', column]:.2f} |\n")
-                f.write(f"| {column} - 50th Percentile (Median) | {summary_stats.loc['50%', column]:.2f} |\n")
-                f.write(f"| {column} - 75th Percentile | {summary_stats.loc['75%', column]:.2f} |\n")
-                f.write(f"| {column} - Max | {summary_stats.loc['max', column]:.2f} |\n")
-                f.write("|--------------|-------|\n")
-            
-            f.write("\n")
-
-            # Missing Values Section (Formatted as Table)
-            f.write("## Missing Values\n")
-            f.write("The following columns contain missing values, with their respective counts:\n")
-            f.write("\n| Column       | Missing Values Count |\n")
-            f.write("|--------------|----------------------|\n")
-            for column, count in missing_values.items():
-                f.write(f"| {column} | {count} |\n")
-            f.write("\n")
-
-            # Outliers Detection Section (Formatted as Table)
-            f.write("## Outliers Detection\n")
-            f.write("The following columns contain outliers detected using the IQR method (values beyond the typical range):\n")
-            f.write("\n| Column       | Outlier Count |\n")
-            f.write("|--------------|---------------|\n")
-            for column, count in outliers.items():
-                f.write(f"| {column} | {count} |\n")
-            f.write("\n")
-
-            # Correlation Matrix Section
-            f.write("## Correlation Matrix\n")
-            f.write("Below is the correlation matrix of numerical features, indicating relationships between different variables:\n\n")
-            f.write("![Correlation Matrix](correlation_matrix.png)\n\n")
-
-            # Outliers Visualization Section
-            f.write("## Outliers Visualization\n")
-            f.write("This chart visualizes the number of outliers detected in each column:\n\n")
-            f.write("![Outliers](outliers.png)\n\n")
-
-            # Distribution Plot Section
-            f.write("## Distribution of Data\n")
-            f.write("Below is the distribution plot of the first numerical column in the dataset:\n\n")
-            f.write("![Distribution](distribution_.png)\n\n")
-
-            # Conclusion Section
-            f.write("## Conclusion\n")
-            f.write("The analysis has provided insights into the dataset, including summary statistics, outlier detection, and correlations between key variables.\n")
-            f.write("The generated visualizations and statistical insights can help in understanding the patterns and relationships in the data.\n\n")
-
-            # Adding Story Section
-            f.write("## Data Story\n")
-            f.write("Based on the data analysis, here is a creative narrative that interprets the findings in an engaging and detailed manner:\n\n")
-
-        print(f"README file created: {readme_file}")  # Debugging line
-        return readme_file
+        data, summary = analyze_dataset(request.file_path)
+        visualizations = visualize_data(data, summary)
+        narrative = narrate_with_llm(summary)
+        generate_readme(narrative, visualizations, summary)
+        return {"message": "Analysis complete. Results saved in README.md."}
     except Exception as e:
-        print(f"Error writing to README.md: {e}")
-        return None
+        return {"error": str(e)}
 
 
-
-
-# Function to generate a detailed story using the new OpenAI API through the proxy
-def question_llm(prompt, context):
-    print("Generating story using LLM...")  # Debugging line
+# Step 1: Analyze Dataset
+def analyze_dataset(file_path):
+    """
+    Analyze the dataset for descriptive statistics, correlations, and missing values.
+    """
     try:
-        # Get the AIPROXY_TOKEN from the environment variable
-        token = os.environ["AIPROXY_TOKEN"]
+        data = pd.read_csv(file_path, encoding='ISO-8859-1')
+    except Exception as e:
+        raise ValueError(f"Error loading the file: {e}")
 
-        # Set the custom API base URL for the proxy
-        api_url = "https://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+    numeric_data = data.select_dtypes(include=['number'])
+    desc_stats = data.describe(include='all').transpose()
 
-        # Construct the full prompt
-        full_prompt = f"""
-        Based on the following data analysis, please generate a creative and engaging story. The story should include multiple paragraphs, a clear structure with an introduction, body, and conclusion, and should feel like a well-rounded narrative.
+    summary = {
+        "num_rows": len(data),
+        "num_columns": len(data.columns),
+        "columns": data.dtypes.to_dict(),
+        "missing_values": data.isnull().sum().to_dict(),
+        "desc_stats_summary": desc_stats[['mean', 'std', 'min', '25%', '50%', '75%', 'max']] if not desc_stats.empty else None,
+        "corr_matrix_summary": numeric_data.corr().describe() if not numeric_data.empty else None,
+    }
 
-        Context:
-        {context}
+    return data, summary
 
-        Data Analysis Prompt:
-        {prompt}
 
-        The story should be elaborate and cover the following:
-        - An introduction to set the context.
-        - A detailed body that expands on the data points and explores their significance.
-        - A conclusion that wraps up the analysis and presents any potential outcomes or lessons.
-        - Use transitions to connect ideas and keep the narrative flowing smoothly.
-        - Format the story with clear paragraphs and structure.
-        """
+# Step 2: Enhanced Visualizations
+def visualize_data(data, summary, output_dir="./"):
+    """
+    Create and save visualizations based on the dataset.
+    """
+    visualizations = []
 
-        # Prepare headers
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+    numeric_columns = data.select_dtypes(include=['number']).columns
+    if numeric_columns.any():
+        for col in numeric_columns[:2]:  # Limit to top 2 visualizations
+            plot_file = os.path.join(output_dir, f"{col}_distribution.png")
+            plt.figure(figsize=(10, 6))
+            sns.histplot(data[col].dropna(), kde=True, color='skyblue', alpha=0.7)
+            plt.title(f"Distribution of {col}", fontsize=16)
+            plt.xlabel(col, fontsize=14)
+            plt.ylabel("Frequency", fontsize=14)
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.savefig(plot_file, dpi=100)
+            visualizations.append(plot_file)
+            plt.close()
 
-        # Prepare the body with the model and prompt
-        data = {
-            "model": "gpt-4o-mini",  # Specific model for proxy
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": full_prompt}
-            ],
-            "max_tokens": 1000,
-            "temperature": 0.7
-        }
+    if summary.get("corr_matrix_summary") is not None:
+        heatmap_file = os.path.join(output_dir, "correlation_heatmap.png")
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(summary["corr_matrix_summary"], annot=True, fmt=".2f", cmap="coolwarm", cbar_kws={"shrink": 0.8})
+        plt.title("Correlation Heatmap", fontsize=16)
+        plt.savefig(heatmap_file, dpi=100)
+        visualizations.append(heatmap_file)
+        plt.close()
 
-        # Send the POST request to the proxy
-        response = requests.post(api_url, headers=headers, data=json.dumps(data))
+    return visualizations
 
-        # Check for successful response
-        if response.status_code == 200:
-            # Extract the story from the response
-            story = response.json()['choices'][0]['message']['content'].strip()
-            print("Story generated.")  # Debugging line
-            return story
+
+# Step 3: Generate Narrative with LLM
+def narrate_with_llm(summary):
+    """
+    Generate a narrative report using an LLM based on the dataset summary.
+    """
+    sanitized_summary = sanitize_summary(summary)
+
+    prompt = (
+        f"Analyze this dataset summary and write a clear, concise narrative:\n\n"
+        f"Dataset:\n- Rows: {sanitized_summary['num_rows']}, Columns: {sanitized_summary['num_columns']}\n"
+        f"- Missing Values: {sanitized_summary['missing_values']}\n"
+        f"- Column Types: {list(sanitized_summary['columns'].keys())}\n"
+        f"- Key Stats: {sanitized_summary['desc_stats_summary']}\n"
+        f"- Correlation Summary: {sanitized_summary['corr_matrix_summary']}\n\n"
+        f"Focus on trends, patterns, and actionable insights."
+    )
+
+    data = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": "You are a concise and insightful data analyst."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    try:
+        response = requests.post(OPENAI_API_URL, headers=HEADERS, json=data)
+        response.raise_for_status()
+        return validate_output(response.json()['choices'][0]['message']['content'])
+    except Exception as e:
+        return f"Error generating narrative: {e}"
+
+
+# Step 4: Generate README.md
+def generate_readme(narrative, visualizations, summary):
+    """
+    Generate a README.md report based on the narrative, visualizations, and summary.
+    """
+    with open("README.md", "w") as file:
+        file.write("# Automated Data Analysis Report\n\n")
+        file.write("## Dataset Description\n")
+        file.write(f"- **Rows:** {summary['num_rows']}\n")
+        file.write(f"- **Columns:** {summary['num_columns']}\n")
+        file.write(f"- **Missing Values:** {summary['missing_values']}\n\n")
+        file.write("## Narrative Analysis\n")
+        file.write(narrative + "\n\n")
+        file.write("## Visualizations\n")
+        for vis in visualizations:
+            file.write(f"![{os.path.basename(vis)}]({vis})\n")
+
+
+# Sanitization and Validation Utilities
+def sanitize_summary(summary):
+    """Ensure the summary is safe for further processing."""
+    sanitized = {}
+    for key, value in summary.items():
+        if isinstance(value, dict):
+            sanitized[key] = {k: str(v).replace('\n', ' ') for k, v in value.items()}
+        elif isinstance(value, pd.DataFrame):
+            sanitized[key] = value.head(5).to_markdown()
         else:
-            print(f"Error with request: {response.status_code} - {response.text}")
-            return "Failed to generate story."
-
-    except Exception as e:
-        print(f"Error: {e}")
-        return "Failed to generate story."
+            sanitized[key] = str(value).replace('\n', ' ')
+    return sanitized
 
 
-
-# Main function that integrates all the steps
-def main(csv_file):
-    print("Starting the analysis...")  # Debugging line
-
-    # Set the API token as an environment variable
-  
-    # Try reading the CSV file with 'ISO-8859-1' encoding to handle special characters
-    try:
-        df = pd.read_csv(csv_file, encoding='ISO-8859-1')
-        print("Dataset loaded successfully!")  # Debugging line
-    except UnicodeDecodeError as e:
-        print(f"Error reading file: {e}")
-        return
-
-    summary_stats, missing_values, corr_matrix = analyze_data(df)
-
-    # Debugging print
-    print("Summary Stats:")
-    print(summary_stats)
-
-    outliers = detect_outliers(df)
-
-    # Debugging print
-    print("Outliers detected:")
-    print(outliers)
-
-    output_dir = os.path.splitext(csv_file)[0]
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Visualize the data and check output paths
-    heatmap_file, outliers_file, dist_plot_file = visualize_data(corr_matrix, outliers, df, output_dir)
-
-    print("Visualizations saved.")
-
-    # Generate the story using the LLM
-    story = question_llm("Generate a nice and creative story from the analysis", 
-                         context=f"Dataset Analysis:\nSummary Statistics:\n{summary_stats}\n\nMissing Values:\n{missing_values}\n\nCorrelation Matrix:\n{corr_matrix}\n\nOutliers:\n{outliers}")
-
-    # Create the README file with the analysis and the story
-    readme_file = create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir)
-    if readme_file:
-        try:
-            # Append the story to the README.md file
-            with open(readme_file, 'a') as f:
-                f.write("## Story\n")
-                f.write(f"{story}\n")
-
-            print(f"Analysis complete! Results saved in '{output_dir}' directory.")
-            print(f"README file: {readme_file}")
-            print(f"Visualizations: {heatmap_file}, {outliers_file}, {dist_plot_file}")
-        except Exception as e:
-            print(f"Error appending story to README.md: {e}")
-    else:
-        print("Error generating the README.md file.")
-
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: uv run autolysis.py <dataset_path>")
-        sys.exit(1)
-    main(sys.argv[1])
+def validate_output(output):
+    """Check for forbidden patterns in the LLM output."""
+    forbidden_patterns = ["<script>", "exec(", "os.system(", "import ", "```python", "DROP TABLE"]
+    if any(pattern in output for pattern in forbidden_patterns):
+        raise ValueError("Invalid content detected in LLM output.")
+    return output
