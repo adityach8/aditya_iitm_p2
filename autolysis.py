@@ -183,17 +183,21 @@ def main(csv_file):
         print(f"Error reading the dataset: {e}")
         return
 
+    # Analyze the data
     summary_stats, missing_values, corr_matrix = analyze_data(df)
     outliers = detect_outliers(df)
 
-    output_dir = os.path.splitext(csv_file)[0]
-    os.makedirs(output_dir, exist_ok=True)
+    # Set the output directory to the current working directory
+    output_dir = os.getcwd()
 
+    # Generate visualizations and save them in the current working directory
     heatmap_file, outliers_file, dist_plot_file = visualize_data(corr_matrix, outliers, df, output_dir)
 
+    # Create a story context and generate a narrative
     story_context = f"Summary Statistics:\n{summary_stats}\n\nMissing Values:\n{missing_values}\n\nCorrelation Matrix:\n{corr_matrix}\n\nOutliers:\n{outliers}"
     story = generate_story("Create a narrative based on the data analysis.", story_context)
 
+    # Create the README file in the current working directory
     readme_path = create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir)
     with open(readme_path, 'a') as f:
         f.write("## Data Story\n")
