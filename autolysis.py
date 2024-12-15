@@ -32,7 +32,7 @@ def analyze_data(df):
     - Summary statistics for numerical columns
     - Missing value counts
     - Correlation matrix for numeric data
-    
+
     Args:
         df (pd.DataFrame): The dataset to analyze.
 
@@ -40,7 +40,7 @@ def analyze_data(df):
         tuple: Summary statistics, missing value counts, correlation matrix.
     """
     print("Analyzing the dataset...")
-    summary_stats = df.describe()  # Numerical summary
+    summary_stats = df.describe(include='all')  # Include all data types
     missing_values = df.isnull().sum()  # Count of missing values
     numeric_df = df.select_dtypes(include=[np.number])  # Numeric-only columns
     corr_matrix = numeric_df.corr() if not numeric_df.empty else pd.DataFrame()
@@ -172,7 +172,8 @@ def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_d
 
             # Distribution plot
             f.write("## Distribution\n")
-            f.write("![Distribution](distribution.png)\n\n")
+            if dist_plot_file:
+                f.write(f"![Distribution]({dist_plot_file})\n\n")
 
             # Conclusion
             f.write("## Conclusion\n")
