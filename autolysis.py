@@ -267,22 +267,13 @@ def question_llm(prompt, context):
             "temperature": 0.7
         }
 
-        # Send the POST request to the proxy
         response = requests.post(api_url, headers=headers, data=json.dumps(data))
-
-        # Check for successful response
         if response.status_code == 200:
-            # Extract the story from the response
-            story = response.json()['choices'][0]['message']['content'].strip()
-            print("Story generated.")  # Debugging line
-            return story
+            return response.json()['choices'][0]['message']['content'].strip()
         else:
-            print(f"Error with request: {response.status_code} - {response.text}")
             return "Failed to generate story."
-
     except Exception as e:
-        print(f"Error: {e}")
-        return "Failed to generate story."
+        return f"Error: {e}"
 
 
 # ---------------------------- Main Execution ---------------------------- #
