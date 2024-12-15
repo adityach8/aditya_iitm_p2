@@ -13,8 +13,6 @@
 # ]
 # ///
 
-
-
 import os
 import pandas as pd
 import numpy as np
@@ -41,8 +39,8 @@ def analyze_data(df):
         tuple: Summary statistics, missing value counts, correlation matrix.
     """
     print("Analyzing the dataset...")
-    summary_stats = df.describe(include='all')  # Include all data types
-    missing_values = df.isnull().sum()  # Count of missing values
+    summary_stats = df.describe(include='all').transpose()  # Include all data types
+    missing_values = df.isnull().sum().sort_values(ascending=False)  # Count of missing values
     numeric_df = df.select_dtypes(include=[np.number])  # Numeric-only columns
     corr_matrix = numeric_df.corr() if not numeric_df.empty else pd.DataFrame()
     print("Data analysis complete.")
@@ -292,3 +290,4 @@ if __name__ == "__main__":
         print("Usage: python script.py <dataset_path>")
         sys.exit(1)
     main(sys.argv[1])
+
