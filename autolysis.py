@@ -14,6 +14,7 @@
 # ///
 
 
+
 import os
 import pandas as pd
 import numpy as np
@@ -74,6 +75,7 @@ def visualize_data(corr_matrix, outliers, df, output_dir):
     - Correlation heatmap
     - Outlier counts
     - Distribution plot of the first numeric column
+    - Boxplot for outlier analysis
 
     Args:
         corr_matrix (pd.DataFrame): Correlation matrix.
@@ -82,7 +84,7 @@ def visualize_data(corr_matrix, outliers, df, output_dir):
         output_dir (str): Directory to save visualizations.
 
     Returns:
-        tuple: File paths of saved visualizations (heatmap, outliers, distribution).
+        tuple: File paths of saved visualizations (heatmap, outliers, distribution, boxplot).
     """
     print("Generating visualizations...")
 
@@ -120,11 +122,21 @@ def visualize_data(corr_matrix, outliers, df, output_dir):
         plt.savefig(dist_plot_file)
         plt.close()
 
+    # Boxplot for outlier analysis
+    boxplot_file = None
+    if len(numeric_columns) > 0:
+        boxplot_file = os.path.join(output_dir, 'boxplot.png')
+        plt.figure(figsize=(10, 6))
+        sns.boxplot(data=df[numeric_columns], orient="h", palette="Set2")
+        plt.title('Boxplot of Numeric Columns')
+        plt.savefig(boxplot_file)
+        plt.close()
+
     print("Visualizations generated.")
-    return heatmap_file, outliers_file, dist_plot_file
+    return heatmap_file, outliers_file, dist_plot_file, boxplot_file
 
 
-def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir):
+def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir, visualizations):
     """
     Generate a README.md file summarizing the analysis.
 
@@ -134,6 +146,7 @@ def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_d
         corr_matrix (pd.DataFrame): Correlation matrix.
         outliers (pd.Series): Outlier counts.
         output_dir (str): Directory to save the README.
+        visualizations (dict): Paths to visualization files.
 
     Returns:
         str: Path to the generated README.md file.
@@ -161,19 +174,24 @@ def create_readme(summary_stats, missing_values, corr_matrix, outliers, output_d
             if corr_matrix.empty:
                 f.write("No numeric columns available for correlation analysis.\n\n")
             else:
-                f.write("![Correlation Matrix](correlation_matrix.png)\n\n")
+                f.write(f"![Correlation Matrix]({visualizations['heatmap']})\n\n")
 
             # Outliers visualization
             f.write("## Outliers\n")
             if outliers.sum() > 0:
-                f.write("![Outliers](outliers.png)\n\n")
+                f.write(f"![Outliers]({visualizations['outliers']})\n\n")
             else:
                 f.write("No outliers detected in the dataset.\n\n")
 
             # Distribution plot
             f.write("## Distribution\n")
-            if dist_plot_file:
-                f.write(f"![Distribution]({dist_plot_file})\n\n")
+            if visualizations['distribution']:
+                f.write(f"![Distribution]({visualizations['distribution']})\n\n")
+
+            # Boxplot visualization
+            f.write("## Boxplot\n")
+            if visualizations['boxplot']:
+                f.write(f"![Boxplot]({visualizations['boxplot']})\n\n")
 
             # Conclusion
             f.write("## Conclusion\n")
@@ -246,20 +264,27 @@ def main(csv_file):
     output_dir = "."
     os.makedirs(output_dir, exist_ok=True)
 
-    heatmap_file, outliers_file, dist_plot_file = visualize_data(corr_matrix, outliers, df, output_dir)
+    heatmap_file, outliers_file, dist_plot_file, boxplot_file = visualize_data(corr_matrix, outliers, df, output_dir)
 
     story = question_llm(
         "Generate a creative and engaging story from the data analysis.",
         context=f"Dataset Analysis:\nSummary Statistics:\n{summary_stats}\n\nMissing Values:\n{missing_values}\n\nCorrelation Matrix:\n{corr_matrix}\n\nOutliers:\n{outliers}"
     )
 
-    readme_file = create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir)
+    visualizations = {
+        "heatmap": heatmap_file,
+        "outliers": outliers_file,
+        "distribution": dist_plot_file,
+        "boxplot": boxplot_file
+    }
+
+    readme_file = create_readme(summary_stats, missing_values, corr_matrix, outliers, output_dir, visualizations)
     if readme_file:
         with open(readme_file, 'a') as f:
             f.write("\n## Story\n")
             f.write(story)
 
-        print(f"Analysis complete! Results saved in '{output_dir}' directory.")
+        print(f"Analysis complete! Results saved in '{output_dir}'.\nREADME file, visualizations, and analysis results are available for review.")
 
 if __name__ == "__main__":
     import sys
